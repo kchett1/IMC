@@ -1,0 +1,53 @@
+def calculate_order_book_metrics(self, order_depth: OrderDepth) -> dict:
+    """
+    Calculate mid-price, VWAP, and imbalance from the order book.
+    """
+    bids = order_depth.buy_orders  # Dict[price: volume]
+    asks = order_depth.sell_orders  # Dict[price: volume]
+
+    if not bids or not asks:
+        return {"mid_price": None, "vwap": None, "imbalance": 0.0}
+
+    best_bid = max(bids.keys())
+    best_ask = min(asks.keys())
+    mid_price = (best_bid + best_ask) / 2
+
+    # VWAP = Σ(price * volume) / Σ(volume)
+    all_prices_volumes = list(bids.items()) + list(asks.items())
+    total_volume = sum(abs(vol) for _, vol in all_prices_volumes)
+    vwap = sum(price * abs(vol) for price, vol in all_prices_volumes) / total_volume if total_volume != 0 else mid_price
+
+    # Imbalance: (total_bid_volume - total_ask_volume) / total_volume
+    total_bid_volume = sum(bids.values())
+    total_ask_volume = sum(asks.values())
+    imbalance = (total_bid_volume - total_ask_volume) / (total_bid_volume + total_ask_volume) if (total_bid_volume + total_ask_volume) > 0 else 0
+
+    return {
+        "mid_price": mid_price,
+        "vwap": vwap,
+        "imbalance": imbalance
+    }
+
+
+def calculate_trend_metrics(self) -> dict:
+    """
+    Compute simple moving average (SMA) over a recent window of mid prices.
+    """
+    window_size = 5  # Can be made configurable
+    if len(self.past_mid_prices) < window_size:
+        return {"sma": None}
+
+    sma = sum(self.past_mid_prices[-window_size:]) / window_size
+    return {"sma": sma}
+
+
+def risk_adjustment(self, fair_value: float, current_position: int) -> float:
+    """
+    Adjust fair value based on position to reduce risk when overexposed.
+    """
+    max_position = 100  # Example cap
+    risk_sensitivity = 0.05  # Tweak this as needed
+
+    adjustment = risk_sensitivity * current_position / max_position
+    return fair_value * (1 - adjustment)
+

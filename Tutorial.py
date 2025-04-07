@@ -11,6 +11,7 @@ from typing import Any, TypeAlias
 
 JSON: TypeAlias = dict[str, "JSON"] | list["JSON"] | str | int | float | bool | None
 
+#DONT TOUCH LOGGER
 class Logger:
     def __init__(self) -> None:
         self.logs = ""

@@ -3,9 +3,6 @@ from abc import abstractmethod, ABC
 from collections import deque
 from typing import Any, TypeAlias
 
-################################################################################
-# STUBS for datamodels (remove if you have your actual datamodels.py present)
-################################################################################
 
 class Symbol(str):
     pass
@@ -57,9 +54,6 @@ class TradingState:
         self.position = {}            # symbol -> int
         self.observations = Observation()
 
-################################################################################
-# END STUBS
-################################################################################
 
 JSON: TypeAlias = dict[str, "JSON"] | list["JSON"] | str | int | float | bool | None
 

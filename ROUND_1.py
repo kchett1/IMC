@@ -13,6 +13,7 @@ JSON: TypeAlias = dict[str, "JSON"] | list["JSON"] | str | int | float | bool | 
 
 #DONT TOUCH LOGGER
 class Logger:
+
     def __init__(self) -> None:
         self.logs = ""
         self.max_log_length = 3750
@@ -21,24 +22,32 @@ class Logger:
         self.logs += sep.join(map(str, objects)) + end
 
     def flush(self, state: TradingState, orders: dict[Symbol, list[Order]], conversions: int, trader_data: str) -> None:
-        base_length = len(self.to_json([
-            self.compress_state(state, ""),
-            self.compress_orders(orders),
-            conversions,
-            "",
-            "",
-        ]))
+        base_length = len(
+            self.to_json(
+                [
+                    self.compress_state(state, ""),
+                    self.compress_orders(orders),
+                    conversions,
+                    "",
+                    "",
+                ]
+            )
+        )
 
         # We truncate state.traderData, trader_data, and self.logs to the same max. length to fit the log limit
         max_item_length = (self.max_log_length - base_length) // 3
 
-        print(self.to_json([
-            self.compress_state(state, self.truncate(state.traderData, max_item_length)),
-            self.compress_orders(orders),
-            conversions,
-            self.truncate(trader_data, max_item_length),
-            self.truncate(self.logs, max_item_length),
-        ]))
+        print(
+            self.to_json(
+                [
+                    self.compress_state(state, self.truncate(state.traderData, max_item_length)),
+                    self.compress_orders(orders),
+                    conversions,
+                    self.truncate(trader_data, max_item_length),
+                    self.truncate(self.logs, max_item_length),
+                ]
+            )
+        )
 
         self.logs = ""
 
@@ -72,14 +81,16 @@ class Logger:
         compressed = []
         for arr in trades.values():
             for trade in arr:
-                compressed.append([
-                    trade.symbol,
-                    trade.price,
-                    trade.quantity,
-                    trade.buyer,
-                    trade.seller,
-                    trade.timestamp,
-                ])
+                compressed.append(
+                    [
+                        trade.symbol,
+                        trade.price,
+                        trade.quantity,
+                        trade.buyer,
+                        trade.seller,
+                        trade.timestamp,
+                    ]
+                )
 
         return compressed
 
@@ -92,8 +103,8 @@ class Logger:
                 observation.transportFees,
                 observation.exportTariff,
                 observation.importTariff,
-                observation.sunlight,
-                observation.humidity,
+                observation.sugarPrice,
+                observation.sunlightIndex,
             ]
 
         return [observations.plainValueObservations, conversion_observations]
@@ -113,7 +124,7 @@ class Logger:
         if len(value) <= max_length:
             return value
 
-        return value[:max_length - 3] + "..."
+        return value[: max_length - 3] + "..."
 
 logger = Logger()
 
@@ -230,81 +241,15 @@ class RAINFOREST_RESINStrategy(MarketMakingStrategy):
 class SQUID_INKStrategy(MarketMakingStrategy):
     def get_true_value(self, state: TradingState) -> int:
         order_depth = state.order_depths[self.symbol]
-        buy_orders = sorted(order_depth.buy_orders.items(), reverse=True)
-        sell_orders = sorted(order_depth.sell_orders.items())
-
-        if not buy_orders or not sell_orders:
-            return 10_000  # fallback in thin markets
-
-        popular_buy_price = buy_orders[0][0]
-        popular_sell_price = sell_orders[0][0]
-        midpoint = (popular_buy_price + popular_sell_price) / 2
-
-        return round(midpoint)
-
-    def act(self, state: TradingState) -> None:
-        true_value = self.get_true_value(state)
 
         order_depth = state.order_depths[self.symbol]
         buy_orders = sorted(order_depth.buy_orders.items(), reverse=True)
         sell_orders = sorted(order_depth.sell_orders.items())
 
-        position = state.position.get(self.symbol, 0)
-        to_buy = self.limit - position
-        to_sell = self.limit + position
+        popular_buy_price = max(buy_orders, key=lambda tup: tup[1])[0]
+        popular_sell_price = min(sell_orders, key=lambda tup: tup[1])[0]
 
-        self.window.append(abs(position) == self.limit)
-        if len(self.window) > self.window_size:
-            self.window.popleft()
-
-        soft_liquidate = len(self.window) == self.window_size and sum(self.window) >= self.window_size / 2 and self.window[-1]
-        hard_liquidate = len(self.window) == self.window_size and all(self.window)
-
-        # Inverse logic and 1.5x more aggressive pricing
-        max_sell_price = true_value - 1.5 if position > self.limit * 0.5 else true_value - 2
-        min_buy_price = true_value + 1.5 if position < self.limit * -0.5 else true_value + 2
-
-        for price, volume in buy_orders:
-            if to_sell > 0 and price >= max_sell_price:
-                quantity = min(to_sell, volume)
-                self.sell(price, quantity)
-                to_sell -= quantity
-
-        if to_sell > 0 and hard_liquidate:
-            quantity = to_sell // 2
-            self.sell(true_value - 1, quantity)
-            to_sell -= quantity
-
-        if to_sell > 0 and soft_liquidate:
-            quantity = to_sell // 2
-            self.sell(true_value - 3, quantity)
-            to_sell -= quantity
-
-        if to_sell > 0:
-            popular_buy_price = buy_orders[0][0]
-            price = max(max_sell_price, popular_buy_price - 1)
-            self.sell(price, to_sell)
-
-        for price, volume in sell_orders:
-            if to_buy > 0 and price <= min_buy_price:
-                quantity = min(to_buy, -volume)
-                self.buy(price, quantity)
-                to_buy -= quantity
-
-        if to_buy > 0 and hard_liquidate:
-            quantity = to_buy // 2
-            self.buy(true_value + 1, quantity)
-            to_buy -= quantity
-
-        if to_buy > 0 and soft_liquidate:
-            quantity = to_buy // 2
-            self.buy(true_value + 3, quantity)
-            to_buy -= quantity
-
-        if to_buy > 0:
-            popular_sell_price = sell_orders[0][0]
-            price = min(min_buy_price, popular_sell_price + 1)
-            self.buy(price, to_buy)
+        return round((popular_buy_price + popular_sell_price) / 2)
 
 class KELPStrategy(MarketMakingStrategy):
     def get_true_value(self, state: TradingState) -> int:
@@ -323,9 +268,9 @@ class KELPStrategy(MarketMakingStrategy):
 class Trader:
     def __init__(self) -> None:
         limits = {
-            "KELP": 2000,
-            "RAINFOREST_RESIN": 10000,
-            "SQUID_INK": 2000
+            "KELP": 50,
+            "RAINFOREST_RESIN": 50,
+            "SQUID_INK": 50,
         }
 
         self.strategies = {symbol: clazz(symbol, limits[symbol]) for symbol, clazz in {

@@ -299,3 +299,4 @@ class Trader:
 
         logger.flush(state, orders, conversions, trader_data)
         return orders, conversions, trader_data
+

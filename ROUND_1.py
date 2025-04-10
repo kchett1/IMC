@@ -297,15 +297,29 @@ class RAINFOREST_RESINStrategy(MarketMakingStrategy):
         return 10_000
 
 class SQUID_INKStrategy(MarketMakingStrategy):
+    def __init__(self, symbol: Symbol, limit: int) -> None:
+        super().__init__(symbol, limit)
+
     def get_true_value(self, state: TradingState) -> int:
-        od = state.order_depths.get(self.symbol, OrderDepth())
-        buy_orders = sorted(od.buy_orders.items(), reverse=True)
-        sell_orders = sorted(od.sell_orders.items())
-        if not buy_orders or not sell_orders:
-            return 100
-        best_buy = max(buy_orders, key=lambda tup: tup[1])[0]
-        best_sell = min(sell_orders, key=lambda tup: tup[1])[0]
-        return round((best_buy + best_sell) / 2)
+        kelp_depth = state.order_depths["KELP"]
+        squid_depth = state.order_depths["SQUID_INK"]
+
+        def mid_price(depth):
+            if not depth.buy_orders or not depth.sell_orders:
+                return None
+            best_bid = max(depth.buy_orders.keys())
+            best_ask = min(depth.sell_orders.keys())
+            return (best_bid + best_ask) / 2
+
+        kelp_mid = mid_price(kelp_depth)
+        squid_mid = mid_price(squid_depth)
+
+        if kelp_mid is None or squid_mid is None:
+            return squid_mid or 100  # fallback value
+
+        # Make squid track kelp, but 1.5x the divergence
+        adjusted_value = kelp_mid + (squid_mid - kelp_mid) * 1.5
+        return round(adjusted_value)
 
 class KELPStrategy(MarketMakingStrategy):
     def get_true_value(self, state: TradingState) -> int:
@@ -352,4 +366,4 @@ class Trader:
         trader_data = json.dumps(new_trader_data, separators=(",", ":"))
         logger.flush(state, orders, conversions, trader_data)
         return orders, conversions, trader_data
-
+    
